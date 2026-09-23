@@ -13,7 +13,10 @@ module.exports = {
     .setName("play")
     .setDescription("play a song from a variety of sources")
     .addStringOption((option) =>
-      option.setName("query").setDescription("the song or video to look for").setRequired(true),
+      option
+        .setName("query")
+        .setDescription("the song or video to look for")
+        .setRequired(true),
     )
     .addStringOption((option) =>
       option
@@ -65,8 +68,9 @@ module.exports = {
         const filter = query["results"].filter(
           (query) => query["type"] === "Video",
         );
-        const video = await innertube.getBasicInfo(filter[0]["video_id"]);
-	return await video.download().then((stream) => audioResource = createAudioResource(stream));
+        return await innertube
+          .download(filter[0]["video_id"])
+          .then((stream) => (audioResource = createAudioResource(stream)));
       }
     };
     await download(service);
