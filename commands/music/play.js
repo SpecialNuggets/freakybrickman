@@ -80,6 +80,8 @@ module.exports = {
       adapterCreator: vad,
     }).subscribe(audioPlayer);
     audioPlayer.play(audioResource);
-    await interaction.followUp(`Now playing ${url}`);
+    await interaction.followUp(
+      `Now playing ${interaction.options.getString("query")}`,
+    );
   },
 };
