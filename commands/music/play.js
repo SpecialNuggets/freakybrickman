@@ -1,3 +1,4 @@
+const { fetch } = require("undici");
 const { Innertube, Platform } = require("youtubei.js");
 const { SlashCommandBuilder } = require("discord.js");
 const {
@@ -32,6 +33,10 @@ module.exports = {
     };
     const innertube = await Innertube.create({
       cookie: process.env.COOKIE,
+      fetch: async (input, init) => {
+        if (init) init["method"] = input?.method || "GET";
+        return await fetch(input?.url || input, init);
+      },
     });
     const services = {
       soundcloud: async (query, clientId) => {
