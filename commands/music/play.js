@@ -1,4 +1,7 @@
-const { Readable } = require("node:stream");
+const { spawn } = require("node:child_process");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
 const { Innertube, Platform } = require("youtubei.js");
 const { SlashCommandBuilder } = require("discord.js");
 const {
@@ -55,28 +58,63 @@ const getInnertube = () => {
   return innertubePromise;
 };
 
-// Clients to try in order; YouTube blocks different ones at different times.
-const YT_CLIENTS = (process.env.YT_CLIENTS || "TV,YTMUSIC,WEB_EMBEDDED,WEB")
-  .split(",")
-  .map((c) => c.trim())
-  .filter(Boolean);
+// YouTube audio is downloaded with yt-dlp: YouTube now rejects most direct
+// stream requests that lack anti-bot tokens, which yt-dlp handles for us.
+// Install: curl -L -o ~/bin/yt-dlp https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux && chmod +x ~/bin/yt-dlp
+const YTDLP =
+  process.env.YTDLP_PATH ||
+  [path.join(os.homedir(), "bin", "yt-dlp"), "/usr/local/bin/yt-dlp"].find(
+    (p) => fs.existsSync(p),
+  ) ||
+  "yt-dlp";
 
-async function youtubeStream(innertube, videoId) {
-  const errors = [];
-  for (const client of YT_CLIENTS) {
-    try {
-      const webStream = await innertube.download(videoId, {
-        type: "audio",
-        quality: "best",
-        format: "any",
-        client,
-      });
-      return Readable.fromWeb(webStream);
-    } catch (err) {
-      errors.push(`${client}: ${err?.message || err}`);
-    }
+function ytdlpStream(videoId) {
+  return new Promise((resolve, reject) => {
+    const args = [
+      "--js-runtimes",
+      `node:${process.execPath}`,
+      "-f",
+      "bestaudio/best",
+      "--no-playlist",
+      "-q",
+      "--no-warnings",
+      "-o",
+      "-",
+    ];
+    if (YT_PROXY) args.push("--proxy", YT_PROXY);
+    args.push("--", `https://www.youtube.com/watch?v=${videoId}`);
+
+    const proc = spawn(YTDLP, args, { stdio: ["ignore", "pipe", "pipe"] });
+    let stderr = "";
+    let started = false;
+    proc.stderr.on("data", (d) => (stderr += d));
+    proc.on("error", (err) =>
+      reject(new Error(`Couldn't run yt-dlp (${YTDLP}): ${err.message}`)),
+    );
+    proc.on("close", (code) => {
+      if (!started)
+        reject(
+          new Error(stderr.trim().split("\n").pop() || `yt-dlp exited ${code}`),
+        );
+    });
+    // Only report success once audio actually starts flowing.
+    proc.stdout.once("readable", () => {
+      if (proc.stdout.readableLength === 0) return; // EOF with no audio
+      started = true;
+      proc.stdout.once("close", () => proc.kill());
+      resolve(proc.stdout);
+    });
+  });
+}
+
+// YouTube sometimes returns a one-off 403; retry once before giving up.
+async function youtubeStream(videoId) {
+  try {
+    return await ytdlpStream(videoId);
+  } catch (err) {
+    if (/unavailable|private|removed|age/i.test(err.message)) throw err;
+    return await ytdlpStream(videoId);
   }
-  throw new Error(`All YouTube clients failed:\n${errors.join("\n")}`);
 }
 
 module.exports = {
@@ -129,7 +167,7 @@ module.exports = {
         );
         if (!video) return await interaction.followUp("No results found.");
         title = video.title?.toString() || title;
-        stream = await youtubeStream(innertube, video.video_id);
+        stream = await youtubeStream(video.video_id);
       } else {
         return await interaction.followUp("service is not supported.");
       }
