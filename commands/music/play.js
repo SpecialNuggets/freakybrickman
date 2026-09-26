@@ -23,13 +23,14 @@ Platform.shim.eval = (data, env) => {
   return new Function(code)();
 };
 
-// Optional HTTP proxy for YouTube (set YT_PROXY=http://user:pass@host:port).
+// Optional HTTP proxy for YouTube only (PROXY or YT_PROXY=http://user:pass@host:port).
 // Datacenter IPs (like Oracle Cloud) often get "Sign in to confirm you're
 // not a bot"; a residential proxy and/or COOKIE fixes that.
+const YT_PROXY = process.env.YT_PROXY || process.env.PROXY;
 let ytFetch;
-if (process.env.YT_PROXY) {
+if (YT_PROXY) {
   const { fetch, ProxyAgent } = require("undici");
-  const dispatcher = new ProxyAgent(process.env.YT_PROXY);
+  const dispatcher = new ProxyAgent(YT_PROXY);
   ytFetch = (input, init = {}) => {
     const url =
       typeof input === "string" || input instanceof URL ? input : input.url;
