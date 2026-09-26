@@ -8,6 +8,8 @@ const {
   joinVoiceChannel,
   createAudioPlayer,
   createAudioResource,
+  getVoiceConnection,
+  AudioPlayerStatus,
 } = require("@discordjs/voice");
 
 const scdl = require("soundcloud-downloader").default;
@@ -178,7 +180,14 @@ module.exports = {
       );
     }
 
+    // If something is already playing in this server, stop it first.
+    getVoiceConnection(interaction.guildId)?.state.subscription?.player.stop(
+      true,
+    );
+
     const audioPlayer = createAudioPlayer();
+    // When the song ends or is stopped, close the download (kills yt-dlp).
+    audioPlayer.on(AudioPlayerStatus.Idle, () => stream.destroy?.());
     audioPlayer.on("error", (err) =>
       console.error("[play] audio player error:", err),
     );
